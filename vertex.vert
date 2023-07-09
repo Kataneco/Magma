@@ -12,5 +12,5 @@ layout(push_constant) uniform block {
 
 void main() {
     gl_Position = constants.renderMatrix * vec4(position, 1.0f);
-    fragmentColor = vec4(normal, 0.0f);
+    fragmentColor = vec4(sin(constants.renderMatrix[3].x)+sin(position.x), sin(constants.renderMatrix[3].y)+sin(position.y), sin(constants.renderMatrix[3].z)+sin(position.z), 0.0f);
 }

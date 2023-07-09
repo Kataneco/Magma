@@ -215,13 +215,15 @@ Mesh Mesh::loadObj(const std::string& filePath) {
 
 int main() {
     //Hardcoded resolution
-    int width = 1280, height = 720;
+    int width = 1920, height = 1080;
 
     //Create GLFW window
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
     GLFWwindow *window = glfwCreateWindow(width, height, "I <3 You", nullptr, nullptr);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     //Vulkan initialize
     volkInitialize();
@@ -531,9 +533,9 @@ int main() {
     rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;
     rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE;
     rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;
-    rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_LINE;
     rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;
-    rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizationStateCreateInfo.lineWidth = 1.0f;
 
     VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo{};
@@ -677,9 +679,27 @@ int main() {
     //Main rendering loop
     uint32_t frame = 0;
     const auto start = std::chrono::high_resolution_clock::now(); //Timestamp for rendering start
+
+    float deltaTime = 0.0f;	// Time between current frame and last frame
+    float currentFrame = 0.0f; // Time of current frame
+    float lastFrame = 0.0f; // Time of last frame
+
+    //Camera
+    float sensitivity = 0.1f;
+    float lastX = 0.0f, lastY = 0.0f;
+    float speed = 0.5f;
+    float yaw = 0.0f, pitch = 0.0f;
+    glm::vec3 camera = {0.0f, 0.0f, -1.0f};
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) == GLFW_TRUE) continue;
+        if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) == GLFW_TRUE) continue; //Pause rendering if minimized
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) break; //Exit button
+
+        // Delta time
+        currentFrame = glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
 
         vkWaitForFences(device, 1, &frameLockFence[frame], VK_TRUE, UINT64_MAX); //Wait for this frame to be unlocked (CPU)
         vkResetFences(device, 1, &frameLockFence[frame]); //Re-lock this frame (CPU)
@@ -719,8 +739,34 @@ int main() {
 
         float time = std::chrono::duration_cast<std::chrono::duration<float, std::ratio<1,1>>>(std::chrono::high_resolution_clock::now()-start).count();
 
-        glm::mat4 model = glm::scale(glm::vec3(1,1,1))*glm::rotate(glm::radians(time*90.0f), glm::vec3(0.0f, 1.0f, 0.0f))*glm::translate(glm::vec3(0,0,0));
-        glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.5f, -1.0f), glm::vec3(0,0,0), glm::vec3(0,1,0));
+        double xpos, ypos;
+        glfwGetCursorPos(window, &xpos, &ypos);
+
+        float xoffset = (xpos - lastX)*sensitivity;
+        float yoffset = (lastY - ypos)*sensitivity;
+        lastX = xpos;
+        lastY = ypos;
+
+        yaw   += xoffset;
+        pitch += yoffset;
+
+        if(pitch > 89.0f) pitch = 89.0f;
+        if(pitch < -89.0f) pitch = -89.0f;
+
+        glm::vec3 direction;
+        direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+        direction.y = sin(glm::radians(pitch));
+        direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera += speed*deltaTime*glm::normalize(direction);
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera -= speed*deltaTime*glm::normalize(direction);
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera -= speed*deltaTime*glm::normalize(glm::cross(glm::normalize(direction), glm::vec3(0.0f, 1.0f, 0.0f)));
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera += speed*deltaTime*glm::normalize(glm::cross(glm::normalize(direction), glm::vec3(0.0f, 1.0f, 0.0f)));
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) camera.y += speed*deltaTime;
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) camera.y -= speed*deltaTime;
+
+        glm::mat4 model = glm::scale(glm::vec3(1,1,1))*glm::rotate(glm::radians(time*0.5f), glm::vec3(0.0f, 1.0f, 0.0f))*glm::translate(glm::vec3(0,0,0));
+        glm::mat4 view = glm::lookAt(camera, camera+glm::normalize(direction), glm::vec3(0,1,0));
         glm::mat4 projection = glm::perspective(glm::radians(70.0f), (float)width/(float)height, 0.01f, 100.0f);
         projection[1][1] *= -1;
 
